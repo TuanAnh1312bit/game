@@ -4,38 +4,36 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>DeviceHub — Trò chơi & Hướng dẫn Thiết bị số</title>
+  <meta name="description" content="DeviceHub — Học qua trò chơi về thiết bị số; hướng dẫn kết nối Bluetooth; tài liệu & gallery cho học sinh." />
+  <meta property="og:title" content="DeviceHub — Trò chơi & Hướng dẫn Thiết bị số" />
+  <meta property="og:description" content="Học qua trò chơi: Quiz, Ghép đôi, Hướng dẫn Bluetooth, Tài liệu & Team project." />
+  <meta property="og:image" content="https://images.unsplash.com/photo-1518770660439-4636190af475?w=1200&q=80&auto=format&fit=crop" />
+  <meta name="theme-color" content="#0ea5e9" />
 
-  <!-- Tailwind CDN (Play) -->
+  <!-- Tailwind CDN + font -->
   <script src="https://cdn.tailwindcss.com"></script>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&display=swap" rel="stylesheet">
 
   <style>
     :root{
-      --accent1:#0ea5e9;
-      --accent2:#7c3aed;
-      --muted:#6b7280;
+      --accent1:#0ea5e9; --accent2:#7c3aed; --muted:#6b7280;
     }
     html,body,#root{height:100%}
-    body{font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial;background:linear-gradient(180deg,#f8fafc 0%,#ffffff 100%);color:#0f172a}
-    .nav-glass{background:rgba(255,255,255,0.6);backdrop-filter:blur(6px);box-shadow:0 6px 18px rgba(2,6,23,0.06);border-radius:12px}
+    body{font-family:Inter,system-ui,-apple-system,"Segoe UI",Roboto,Arial;background:linear-gradient(180deg,#f8fafc 0%,#ffffff 100%);color:#0f172a}
+    .nav-glass{background:rgba(255,255,255,0.78);backdrop-filter:blur(6px);box-shadow:0 6px 18px rgba(2,6,23,0.06);border-radius:12px}
     .card{background:white;border-radius:12px;padding:1rem;box-shadow:0 6px 18px rgba(2,6,23,0.04)}
     .btn-primary{background:linear-gradient(90deg,var(--accent2),var(--accent1));color:white}
     .logo-badge{display:inline-flex;align-items:center;gap:.5rem;padding:.4rem .6rem;border-radius:10px;background:linear-gradient(135deg,var(--accent2),var(--accent1));color:white}
     .kbd{background:#111827;color:white;padding:.12rem .4rem;border-radius:.35rem;font-size:.78rem}
     #confetti{position:fixed;left:0;top:0;width:100%;height:100%;pointer-events:none;z-index:9999}
-    /* small animation */
-    .float{animation:float 6s ease-in-out infinite}
-    @keyframes float{0%{transform:translateY(0)}50%{transform:translateY(-6px)}100%{transform:translateY(0)}}
-    /* responsive content width */
-    .container{max-width:1100px;margin-inline:auto;padding:1rem}
-    .footer{opacity:.8;font-size:.9rem;color:var(--muted)}
-    a.no-underline{ text-decoration:none }
+    .modal-backdrop{position:fixed;inset:0;background:rgba(2,6,23,0.55);display:flex;align-items:center;justify-content:center;z-index:60}
+    .visually-hidden{position:absolute;left:-10000px;top:auto;width:1px;height:1px;overflow:hidden}
+    /* back to top */
+    #backTop{display:none;position:fixed;bottom:24px;right:24px;z-index:70;background:linear-gradient(90deg,var(--accent2),var(--accent1));color:white;padding:.6rem;border-radius:999px;box-shadow:0 6px 18px rgba(2,6,23,0.12)}
   </style>
-  <!-- favicon (inline SVG data URL) -->
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%237c3aed'/%3E%3Ctext x='50' y='58' font-size='48' text-anchor='middle' fill='white' font-family='Inter,Arial' font-weight='700'%3EDG%3C/text%3E%3C/svg%3E">
 </head>
 <body>
-  <canvas id="confetti"></canvas>
+  <canvas id="confetti" aria-hidden="true"></canvas>
   <div id="root" class="min-h-screen"></div>
 
   <!-- React & Babel UMD -->
@@ -47,455 +45,370 @@
   const { useState, useEffect, useRef } = React;
 
   /* ---------- Utilities ---------- */
+  function downloadFile(filename, content, mime='text/plain'){ const blob = new Blob([content], {type:mime}); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href=url; a.download=filename; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url); }
+  function htime(ts){ return new Date(ts).toLocaleString(); }
+  function shuffle(a){ return [...a].sort(()=>Math.random()-0.5); }
 
-  // Simple WebAudio small sounds
+  // small audio feedback
   const Sound = (() => {
     const ctx = (window.AudioContext || window.webkitAudioContext) ? new (window.AudioContext || window.webkitAudioContext)() : null;
-    function play(freq, time=0.08, type='sine', vol=0.08){
-      if(!ctx) return;
-      const o = ctx.createOscillator();
-      const g = ctx.createGain();
-      o.type = type; o.frequency.value = freq;
-      g.gain.value = vol;
-      o.connect(g); g.connect(ctx.destination);
-      o.start(); o.stop(ctx.currentTime + time);
-    }
-    return {
-      correct(){ play(880,0.08,'sine',0.06); setTimeout(()=>play(1320,0.06,'sine',0.04),70) },
-      wrong(){ play(180,0.12,'square',0.12) },
-      click(){ play(520,0.04,'sine',0.06) }
-    }
+    function play(freq,time=0.06){ if(!ctx) return; const o=ctx.createOscillator(); const g=ctx.createGain(); o.type='sine'; o.frequency.value=freq; g.gain.value=0.06; o.connect(g); g.connect(ctx.destination); o.start(); o.stop(ctx.currentTime+time); }
+    return { click(){ play(520,0.04) }, ok(){ play(880,0.08); setTimeout(()=>play(1100,0.06),90) }, bad(){ play(160,0.12) } };
   })();
 
-  // Confetti (canvas)
+  // confetti simple
   function fireConfetti(){
-    const c = document.getElementById('confetti');
-    if(!c) return;
-    const ctx = c.getContext('2d'); const w=c.width=window.innerWidth, h=c.height=window.innerHeight;
-    const pieces=[]; const cols=['#7c3aed','#06b6d4','#ffb86b','#ff7b7b','#7ee787','#cba6ff'];
-    for(let i=0;i<120;i++){ pieces.push({x:Math.random()*w,y:-Math.random()*h*0.5,vx:(Math.random()-0.5)*7,vy:2+Math.random()*5,size:6+Math.random()*12,col:cols[Math.floor(Math.random()*cols.length)],rot:Math.random()*360,vr:(Math.random()-0.5)*8}); }
-    let t=0;
-    function frame(){
-      ctx.clearRect(0,0,w,h); t++;
-      for(const p of pieces){
-        p.x+=p.vx; p.y+=p.vy; p.vy+=0.03; p.rot += p.vr;
-        ctx.save(); ctx.translate(p.x,p.y); ctx.rotate(p.rot*Math.PI/180);
-        ctx.fillStyle = p.col; ctx.fillRect(-p.size/2,-p.size/2,p.size,p.size*0.6); ctx.restore();
-      }
-      if(t<260) requestAnimationFrame(frame); else ctx.clearRect(0,0,w,h);
-    }
-    frame();
+    const c=document.getElementById('confetti'); if(!c) return; const ctx=c.getContext('2d'); const w=c.width=window.innerWidth; const h=c.height=window.innerHeight; const p=[]; const cols=['#7c3aed','#06b6d4','#ffb86b','#ff7b7b','#7ee787','#cba6ff']; for(let i=0;i<120;i++){ p.push({x:Math.random()*w,y:-Math.random()*h*0.5,vx:(Math.random()-0.5)*7,vy:2+Math.random()*5,s:6+Math.random()*12,col:cols[Math.floor(Math.random()*cols.length)],rot:Math.random()*360,vr:(Math.random()-0.5)*8}); } let t=0; (function f(){ ctx.clearRect(0,0,w,h); t++; for(const o of p){ o.x+=o.vx; o.y+=o.vy; o.vy+=0.03; o.rot+=o.vr; ctx.save(); ctx.translate(o.x,o.y); ctx.rotate(o.rot*Math.PI/180); ctx.fillStyle=o.col; ctx.fillRect(-o.s/2,-o.s/2,o.s,o.s*0.6); ctx.restore(); } if(t<260) requestAnimationFrame(f); else ctx.clearRect(0,0,w,h); })();
   }
 
-  // Download helper
-  function downloadFile(filename, content, mime='text/plain'){
-    const blob = new Blob([content], {type:mime});
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url; a.download = filename;
-    document.body.appendChild(a); a.click();
-    a.remove(); URL.revokeObjectURL(url);
-  }
-
-  // format time
-  function htime(ts){ const d=new Date(ts); return d.toLocaleString(); }
-
-  /* ---------- Data (sample resources, gallery) ---------- */
-
-  const SAMPLE_DOC_MD = `# Hướng dẫn kết nối Bluetooth — DeviceHub
-
-Phiên bản: 1.0
-Nội dung: Hướng dẫn chi tiết kết nối máy tính ↔ điện thoại qua Bluetooth
-
-1. Windows 10/11
-- Bật Bluetooth trên điện thoại và đặt ở chế độ Discoverable.
-- Trên Windows: Settings → Bluetooth & devices → Add device → Bluetooth.
-- Chấp nhận và xác nhận mã nếu được yêu cầu.
-- Gửi file từ điện thoại: Share → Bluetooth → chọn tên máy tính. Trên Windows chấp nhận sẽ mở hộp thoại chọn nơi lưu.
-
-2. macOS
-- Bật Bluetooth trên Mac và thiết bị.
-- System Settings → Bluetooth → Pair.
-- Đối với Android, dùng Bluetooth File Exchange để nhận file; iPhone sử dụng AirDrop.
-
-3. Android
-- Chọn file → Share → Bluetooth → chọn thiết bị.
-- Nếu không thấy, bật Visible/Discoverable.
-
-4. iPhone
-- iPhone không chia sẻ Bluetooth trực tiếp với Android/Windows; dùng AirDrop (Apple), cáp hoặc dịch vụ đám mây.
-
---- 
-DeviceHub — tài liệu tạo tự động.
-`;
-
-  const GALLERY = [
-    {id:1, src:"https://images.unsplash.com/photo-1517336714731-489689fd1ca8?w=1200&q=80&auto=format&fit=crop", alt:"Laptop và điện thoại"},
-    {id:2, src:"https://images.unsplash.com/photo-1518770660439-4636190af475?w=1200&q=80&auto=format&fit=crop", alt:"Router phát wifi"},
-    {id:3, src:"https://images.unsplash.com/photo-1587825140708-0b4b9d3f1f3b?w=1200&q=80&auto=format&fit=crop", alt:"USB flash drive"},
-    {id:4, src:"https://images.unsplash.com/photo-1512496015851-a90fb38ba796?w=1200&q=80&auto=format&fit=crop", alt:"Người dùng cầm điện thoại"},
-    {id:5, src:"https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=1200&q=80&auto=format&fit=crop", alt:"Màn hình máy tính"},
+  /* ---------- Data ---------- */
+  const TEAM = [
+    {name:'Tuấn Anh', role:'Team leader & Dev', leader:true, bio:'Quản lý dự án, dev chính, triển khai.'},
+    {name:'Quỳnh Anh', role:'Nội dung & Kiểm duyệt', bio:'Viết nội dung hướng dẫn, kiểm duyệt.'},
+    {name:'Thùy Trang', role:'UI/UX & Thiết kế', bio:'Thiết kế giao diện, hình ảnh.'},
+    {name:'Hà An', role:'Media & Hình ảnh', bio:'Chuẩn hóa ảnh, gallery.'},
+    {name:'Thanh Bình', role:'Tester', bio:'Kiểm tra chức năng, bug hunting.'},
+    {name:'Lê Ánh', role:'Tài liệu & Báo cáo', bio:'Tổng hợp tài liệu, hướng dẫn.'}
   ];
 
-  /* ---------- Comments (localStorage) ---------- */
-  const COMMENTS_KEY = 'dh_comments_v1';
+  // sample gallery images (Unsplash)
+  const GALLERY = [
+    {id:1, src:'https://images.unsplash.com/photo-1517336714731-489689fd1ca8?w=1200&q=80&auto=format&fit=crop', alt:'Laptop & phone'},
+    {id:2, src:'https://images.unsplash.com/photo-1518770660439-4636190af475?w=1200&q=80&auto=format&fit=crop', alt:'Router & wifi'},
+    {id:3, src:'https://images.unsplash.com/photo-1587825140708-0b4b9d3f1f3b?w=1200&q=80&auto=format&fit=crop', alt:'USB sticks'},
+    {id:4, src:'https://images.unsplash.com/photo-1512496015851-a90fb38ba796?w=1200&q=80&auto=format&fit=crop', alt:'Person using phone'},
+    {id:5, src:'https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=1200&q=80&auto=format&fit=crop', alt:'Monitor display'}
+  ];
+
+  /* ---------- Comments (local) ---------- */
+  const COMMENTS_KEY = 'devicehub_comments_v1';
   function getComments(){ try{ return JSON.parse(localStorage.getItem(COMMENTS_KEY) || '[]'); }catch(e){ return []; } }
   function saveComments(list){ localStorage.setItem(COMMENTS_KEY, JSON.stringify(list)); }
 
-  /* ---------- Router (hash-based) ---------- */
+  /* ---------- Simple Hash Router ---------- */
   function useHashRoute(){
     const [route, setRoute] = useState(window.location.hash.slice(1) || '/');
-    useEffect(()=>{
-      const onHash = ()=> setRoute(window.location.hash.slice(1) || '/');
-      window.addEventListener('hashchange', onHash);
-      return ()=> window.removeEventListener('hashchange', onHash);
-    },[]);
+    useEffect(()=>{ const onHash=()=> setRoute(window.location.hash.slice(1)||'/'); window.addEventListener('hashchange', onHash); return ()=> window.removeEventListener('hashchange', onHash); },[]);
     function nav(to){ window.location.hash = to; }
     return [route, nav];
   }
 
-  /* ---------- Components / Pages ---------- */
+  /* ---------- Components ---------- */
 
   function TopNav({route, nav}){
-    const items = [
+    const menu = [
       {to:'/', label:'Trang chủ'},
       {to:'/games', label:'Trò chơi'},
       {to:'/guides', label:'Hướng dẫn'},
       {to:'/resources', label:'Tài liệu'},
       {to:'/gallery', label:'Gallery'},
-      {to:'/comments', label:'Bình luận'}
+      {to:'/team', label:'Team'},
+      {to:'/comments', label:'Bình luận'},
     ];
     return (
-      <div className="nav-glass p-4 container flex items-center justify-between gap-4">
+      <header className="nav-glass sticky top-4 z-40 mx-4 p-3 container flex items-center justify-between" role="banner">
         <div className="flex items-center gap-4">
-          <div className="logo-badge">
-            <svg width="36" height="36" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="2" y="4" width="20" height="12" rx="2" fill="white" opacity="0.06"/><path d="M8 9h8M8 12h6" stroke="white" strokeWidth="1.2" strokeLinecap="round"/><circle cx="8" cy="18" r="1.6" fill="white" opacity="0.9"/><circle cx="16" cy="18" r="1.6" fill="white" opacity="0.9"/></svg>
+          <div className="logo-badge" aria-hidden="true">
+            <svg width="34" height="34" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="2" y="4" width="20" height="12" rx="2" fill="white" opacity="0.06"/><path d="M8 9h8M8 12h6" stroke="white" strokeWidth="1.2" strokeLinecap="round"/><circle cx="8" cy="18" r="1.6" fill="white" opacity="0.9"/><circle cx="16" cy="18" r="1.6" fill="white" opacity="0.9"/></svg>
             <div>
               <div className="font-bold text-sm">DeviceHub</div>
               <div className="text-xs">Học — Trò chơi — Hướng dẫn</div>
             </div>
           </div>
-          <nav className="hidden md:flex gap-2 ml-4">
-            {items.map(it=>(
-              <button key={it.to} onClick={()=>nav(it.to)} className={"px-3 py-2 rounded text-sm "+(route===it.to ? "bg-white/80 shadow":"text-sm text-gray-600 hover:bg-white/60")}>
-                {it.label}
+          <nav aria-label="Chính" className="hidden md:flex gap-2 ml-4">
+            {menu.map(m=>(
+              <button key={m.to} onClick={()=>{nav(m.to); Sound.click();}} className={"px-3 py-2 rounded text-sm "+(route===m.to ? "bg-white/90 shadow" : "text-gray-600 hover:bg-white/60")} aria-current={route===m.to ? 'page' : undefined}>
+                {m.label}
               </button>
             ))}
           </nav>
         </div>
 
         <div className="flex items-center gap-2">
-          <button onClick={()=>nav('/resources')} className="px-3 py-2 rounded border text-sm">Tải tài liệu</button>
-          <a className="px-3 py-2 rounded btn-primary hover:opacity-95 text-sm no-underline" href="#/comments">Gửi góp ý</a>
-          <button onClick={()=>{ fireConfetti(); Sound.click(); }} title="Test confetti" className="p-2 rounded bg-white/80 hidden md:inline">🎉</button>
-          <div className="md:hidden">
-            <select onChange={(e)=>nav(e.target.value)} defaultValue={route} className="p-2 border rounded">
-              {items.map(it=><option key={it.to} value={it.to}>{it.label}</option>)}
-            </select>
-          </div>
+          <button onClick={()=>{ downloadTeamInfo(); Sound.click(); }} className="px-3 py-2 rounded border text-sm">Tải team-info</button>
+          <a className="px-3 py-2 rounded btn-primary text-sm no-underline" href="#/comments" onClick={()=>Sound.click()}>Gửi góp ý</a>
+          <button className="p-2 md:hidden" onClick={()=>{ const m=document.getElementById('mobileMenu'); m.classList.toggle('hidden'); }} aria-label="Mở menu">☰</button>
         </div>
-      </div>
+
+        {/* mobile menu */}
+        <div id="mobileMenu" className="md:hidden hidden absolute right-4 top-20 bg-white p-3 rounded shadow">
+          {menu.map(m=><div key={m.to}><button onClick={()=>{nav(m.to); document.getElementById('mobileMenu').classList.add('hidden');}} className="w-full text-left p-2">{m.label}</button></div>)}
+        </div>
+      </header>
     );
   }
 
   function Breadcrumb({route}){
-    const map = {'/':'Trang chủ','/games':'Trò chơi','/guides':'Hướng dẫn','/resources':'Tài liệu','/gallery':'Gallery','/comments':'Bình luận'};
-    return (
-      <div className="container my-4 text-sm text-gray-600">
-        <div>{map[route] || 'Trang'} • DeviceHub</div>
-      </div>
-    );
+    const map = {'/':'Trang chủ','/games':'Trò chơi','/guides':'Hướng dẫn','/resources':'Tài liệu','/gallery':'Gallery','/team':'Team','/comments':'Bình luận'};
+    return <div className="container mt-6 text-sm text-gray-600">{map[route] || 'Trang'} • DeviceHub</div>;
   }
+
+  /* ---------- Pages ---------- */
 
   function Home(){
     return (
-      <div className="container">
-        <div className="grid md:grid-cols-3 gap-6">
-          <div className="md:col-span-2">
-            <div className="card">
-              <h2 className="text-2xl font-bold">Chào mừng đến với DeviceHub</h2>
-              <p className="text-gray-600 mt-2">Một website giáo dục dạng portal dành cho học sinh: trò chơi, hướng dẫn kỹ thuật, tài liệu, gallery và nơi trao đổi. Mục tiêu: giúp bạn hiểu rõ các thiết bị số thông dụng và học cách truyền file an toàn qua Bluetooth.</p>
-
-              <div className="mt-4 grid md:grid-cols-2 gap-4">
-                <div className="p-4 border rounded">
-                  <h3 className="font-semibold">Trò chơi</h3>
-                  <p className="text-sm text-gray-600 mt-1">Quiz, ghép đôi, mini-game — vừa học vừa chơi.</p>
-                </div>
-                <div className="p-4 border rounded">
-                  <h3 className="font-semibold">Hướng dẫn Bluetooth</h3>
-                  <p className="text-sm text-gray-600 mt-1">Bước-by-step cho Windows, macOS, Android, iPhone.</p>
-                </div>
-                <div className="p-4 border rounded">
-                  <h3 className="font-semibold">Tải tài liệu</h3>
-                  <p className="text-sm text-gray-600 mt-1">Tải cheat-sheet, slides, handout cho bài kiểm tra.</p>
-                </div>
-                <div className="p-4 border rounded">
-                  <h3 className="font-semibold">Bình luận & Feedback</h3>
-                  <p className="text-sm text-gray-600 mt-1">Nơi học sinh và giáo viên thảo luận.</p>
-                </div>
+      <main className="container mt-6">
+        <section className="card">
+          <div className="flex flex-col md:flex-row items-start gap-4">
+            <div className="flex-1">
+              <h1 className="text-2xl font-bold">DeviceHub — Học qua trò chơi về thiết bị số</h1>
+              <p className="text-gray-600 mt-2">Portal giúp học sinh tìm hiểu thiết bị số thông dụng, học cách truyền file qua Bluetooth, và luyện với các mini-game.</p>
+              <div className="mt-4 flex gap-2">
+                <a className="px-4 py-2 btn-primary rounded" href="#/games" onClick={()=>Sound.click()}>Bắt đầu chơi</a>
+                <a className="px-4 py-2 border rounded" href="#/guides" onClick={()=>Sound.click()}>Xem hướng dẫn</a>
               </div>
             </div>
-
-            <div className="card mt-4">
-              <h3 className="font-semibold">Những điều cần biết nhanh</h3>
-              <ul className="list-disc pl-5 mt-2 text-sm text-gray-700">
-                <li>Bluetooth phù hợp truyền file nhỏ, tiện nhưng chậm hơn Wi-Fi hay cáp.</li>
-                <li>iPhone dùng AirDrop cho Apple ecosystem; dùng cáp hoặc đám mây cho khác nền tảng.</li>
-                <li>Luôn tắt discoverable khi không cần thiết để tránh rủi ro bảo mật.</li>
-              </ul>
+            <div className="w-full md:w-80">
+              <img src="https://images.unsplash.com/photo-1517336714731-489689fd1ca8?w=900&q=80&auto=format&fit=crop" alt="Thiết bị số" className="rounded shadow" />
             </div>
-
           </div>
+        </section>
 
-          <aside>
-            <div className="card">
-              <h4 className="font-semibold">Tìm nhanh</h4>
-              <SearchBox />
+        <section className="card mt-4">
+          <h2 className="font-semibold text-lg">Mục nổi bật</h2>
+          <div className="mt-3 grid md:grid-cols-3 gap-3">
+            <div className="p-3 border rounded">
+              <h4 className="font-semibold">Trò chơi</h4>
+              <p className="text-sm text-gray-600 mt-1">Quiz, ghép đôi, mini-game — kiểm tra kiến thức nhanh.</p>
             </div>
+            <div className="p-3 border rounded">
+              <h4 className="font-semibold">Hướng dẫn Bluetooth</h4>
+              <p className="text-sm text-gray-600 mt-1">Windows / macOS / Android / iPhone — từng bước.</p>
+            </div>
+            <div className="p-3 border rounded">
+              <h4 className="font-semibold">Tài liệu</h4>
+              <p className="text-sm text-gray-600 mt-1">Tải file hướng dẫn, cheat-sheet, slide nộp bài.</p>
+            </div>
+          </div>
+        </section>
 
-            <div className="card mt-4">
-              <h4 className="font-semibold">Tài nguyên nhanh</h4>
-              <div className="mt-2">
-                <button className="w-full px-3 py-2 rounded btn-primary" onClick={() => downloadFile('HuongDan_Bluetooth.md', SAMPLE_DOC_MD, 'text/markdown')}>Tải Hướng dẫn (MD)</button>
-                <button className="w-full px-3 py-2 rounded border mt-2" onClick={()=>alert('Bạn có thể thêm file PDF vào repo và link ở trang Resources.')}>Upload PDF lên repo</button>
-              </div>
-            </div>
-
-            <div className="card mt-4">
-              <h4 className="font-semibold">Gallery</h4>
-              <div className="mt-2 grid grid-cols-3 gap-2">
-                {GALLERY.slice(0,3).map(img=>(
-                  <img key={img.id} src={img.src+'&w=300&q=60&auto=format&fit=crop'} className="rounded w-full h-20 object-cover" alt={img.alt}/>
-                ))}
-              </div>
-            </div>
-          </aside>
-        </div>
-      </div>
+        <section className="card mt-4">
+          <h3 className="font-semibold">Gallery</h3>
+          <div className="mt-3 grid sm:grid-cols-2 md:grid-cols-3 gap-3">
+            {GALLERY.slice(0,6).map(g=>(
+              <button key={g.id} onClick={()=>openLightbox(g)} className="rounded overflow-hidden shadow"><img src={g.src+'&w=800&q=70&auto=format&fit=crop'} alt={g.alt} className="w-full h-44 object-cover" /></button>
+            ))}
+          </div>
+        </section>
+      </main>
     );
   }
 
-  /* ---------- Search component (client-side search across pages) ---------- */
-  function SearchBox(){
-    const [q, setQ] = useState('');
-    const [res, setRes] = useState([]);
-    function run(){
-      const r = [];
-      if('quiz'.includes(q.toLowerCase())) r.push({title:'Quiz nhanh', path:'/games'});
-      if('bluetooth'.includes(q.toLowerCase())) r.push({title:'Hướng dẫn Bluetooth', path:'/guides'});
-      if('tài liệu'.includes(q.toLowerCase())) r.push({title:'Tài liệu', path:'/resources'});
-      setRes(r);
+  /* ---------- Games (reuse earlier components but simpler) ---------- */
+
+  const QUIZ_QUESTIONS = [
+    {q:'Thiết bị nào nhập giọng nói?', choices:['Microphone','Monitor','Router','Printer'], a:0},
+    {q:'Bluetooth là gì?', choices:['Một hãng','Giao thức không dây tầm ngắn','Màn hình','Ổ cứng'], a:1},
+    {q:'USB flash dùng để?', choices:['Lưu trữ','In ấn','Gọi điện','Phát wifi'], a:0},
+    {q:'USB-C có đặc điểm?', choices:['Chỉ sạc','Đa năng (sạc/dữ liệu/ảnh)','Chỉ in','Không dùng'], a:1},
+  ];
+
+  function Games(){
+    const [i,setI]=useState(0), [score,setScore]=useState(0), [done,setDone]=useState(false);
+    const bestK='dh_quiz_best_v2'; const [best, setBest]=useState(()=>Number(localStorage.getItem(bestK)||0));
+    function choose(idx){
+      const ok = idx===QUIZ_QUESTIONS[i].a;
+      ok ? (setScore(s=>s+1), Sound.ok()) : Sound.bad();
+      if(i+1>=QUIZ_QUESTIONS.length){ const final = score + (ok?1:0); setDone(true); if(final>best){ localStorage.setItem(bestK,String(final)); setBest(final); } setTimeout(()=>fireConfetti(),200); }
+      else setI(i+1);
     }
+    function reset(){ setI(0); setScore(0); setDone(false); }
     return (
-      <div>
-        <input value={q} onChange={(e)=>setQ(e.target.value)} placeholder="Tìm: bluetooth, quiz, tài liệu..." className="w-full p-2 border rounded" />
-        <div className="mt-2 flex gap-2">
-          <button onClick={()=>{ run(); Sound.click(); }} className="px-3 py-2 rounded border">Tìm</button>
-          <button onClick={()=>{ setQ(''); setRes([]); }} className="px-3 py-2 rounded">Xóa</button>
+      <main className="container mt-6">
+        <div className="card">
+          <h2 className="text-2xl font-bold">Quiz nhanh — Thiết bị số</h2>
+          <div className="mt-3">
+            {!done ? (
+              <>
+                <div className="text-sm text-gray-600 mb-2">Câu {i+1}/{QUIZ_QUESTIONS.length}</div>
+                <div className="font-medium">{QUIZ_QUESTIONS[i].q}</div>
+                <div className="grid gap-2 mt-3">
+                  {QUIZ_QUESTIONS[i].choices.map((c,idx)=>(
+                    <button key={idx} onClick={()=>choose(idx)} className="p-2 rounded border text-left bg-white">{c}</button>
+                  ))}
+                </div>
+              </>
+            ) : (
+              <div className="text-center">
+                <h3 className="text-xl font-bold">Hoàn thành 🎉</h3>
+                <p className="mt-2">Điểm: <strong>{score}</strong> / {QUIZ_QUESTIONS.length} — Best: {best}</p>
+                <div className="mt-3"><button className="px-3 py-2 border rounded" onClick={reset}>Làm lại</button></div>
+              </div>
+            )}
+          </div>
         </div>
-        <div className="mt-2">
-          {res.map((r,i)=> <div key={i} className="text-sm"><a className="text-indigo-600" href={"#"+r.path}>{r.title}</a></div>)}
-        </div>
-      </div>
+      </main>
     );
   }
 
-  /* ---------- Games page ---------- */
-  function GamesPage(){
+  /* ---------- Guides ---------- */
+  function Guides(){
     return (
-      <div className="container">
+      <main className="container mt-6">
         <div className="card">
-          <h2 className="text-2xl font-bold">Trò chơi & Kiểm tra</h2>
-          <p className="text-sm text-gray-600 mt-1">Dùng trò chơi để ôn nhanh kiến thức về thiết bị số.</p>
-
-          <div className="mt-4 grid md:grid-cols-2 gap-4">
-            <div className="card">
-              <QuizEnhanced />
-            </div>
-            <div className="card">
-              <MatchEnhanced />
-            </div>
-          </div>
-
-          <div className="mt-4">
-            <h3 className="font-semibold">Mini-game thêm</h3>
-            <p className="text-sm text-gray-600 mt-1">Mình đã tích hợp mini-game "Đập đồ cũ" và bảng điểm lưu local (nếu muốn leaderboard qua server, cần backend).</p>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  /* ---------- Guides page ---------- */
-  function GuidesPage(){
-    return (
-      <div className="container">
-        <div className="card">
-          <h2 className="text-2xl font-bold">Hướng dẫn kết nối Bluetooth & truyền file</h2>
-          <p className="text-sm text-gray-600 mt-1">Hướng dẫn chi tiết theo hệ điều hành, kèm mẹo xử lý sự cố.</p>
-
-          <div className="mt-4 grid md:grid-cols-2 gap-4">
+          <h2 className="text-2xl font-bold">Hướng dẫn kết nối Bluetooth & Truyền file</h2>
+          <div className="mt-3 grid md:grid-cols-2 gap-4">
             <div>
-              <h3 className="font-semibold">Windows 10 / 11</h3>
+              <h4 className="font-semibold">Windows 10 / 11</h4>
               <ol className="list-decimal pl-5 text-sm mt-2 text-gray-700">
-                <li>Bật Bluetooth trên điện thoại và đặt ở trạng thái visible.</li>
-                <li>Windows: Settings → Bluetooth & devices → Add device → Bluetooth → chọn thiết bị.</li>
-                <li>Xác nhận mã ghép (nếu hiển thị). Để gửi file từ điện thoại: Share → Bluetooth → chọn PC; trên PC chấp nhận hộp thoại nhận file.</li>
+                <li>Bật Bluetooth trên điện thoại & PC; đặt điện thoại ở chế độ Discoverable.</li>
+                <li>Windows: Settings → Bluetooth & devices → Add device → Bluetooth → chọn điện thoại.</li>
+                <li>Xác nhận mã ghép; để gửi file trên điện thoại: Share → Bluetooth → chọn PC; trên Windows chấp nhận để lưu.</li>
               </ol>
             </div>
-
             <div>
-              <h3 className="font-semibold">macOS</h3>
+              <h4 className="font-semibold">macOS</h4>
               <ol className="list-decimal pl-5 text-sm mt-2 text-gray-700">
-                <li>System Settings → Bluetooth → Pair. Với Android có thể dùng "Bluetooth File Exchange".</li>
-                <li>Với iPhone, dùng AirDrop để chia sẻ với Mac (nhanh hơn và ổn định hơn).</li>
+                <li>System Settings → Bluetooth → Pair với điện thoại.</li>
+                <li>Với Android, dùng Bluetooth File Exchange để nhận file; Với iPhone hãy dùng AirDrop cho Mac.</li>
               </ol>
             </div>
           </div>
 
           <div className="mt-4 grid md:grid-cols-2 gap-4">
             <div>
-              <h3 className="font-semibold">Android</h3>
+              <h4 className="font-semibold">Android</h4>
               <ol className="list-decimal pl-5 text-sm mt-2 text-gray-700">
-                <li>Mở file → Share → Bluetooth → chọn thiết bị đã pair.</li>
-                <li>Nếu không thấy thiết bị: bật Visible/Discoverable trong Bluetooth settings.</li>
-                <li>Nếu nhiều lỗi: Forget device trên cả hai thiết bị rồi pair lại.</li>
+                <li>Chọn file → Share → Bluetooth → chọn thiết bị (PC/Mac).</li>
+                <li>Nếu không thấy thiết bị: bật Visible/Discoverable trong Settings → Bluetooth.</li>
               </ol>
             </div>
-
             <div>
-              <h3 className="font-semibold">iPhone</h3>
+              <h4 className="font-semibold">iPhone</h4>
               <ol className="list-decimal pl-5 text-sm mt-2 text-gray-700">
-                <li>iPhone không chia sẻ Bluetooth cho Windows/Android theo mặc định — dùng AirDrop cho Apple, cáp hoặc dịch vụ đám mây cho khác nền tảng.</li>
-                <li>Snapdrop (web) là 1 giải pháp nhanh nếu cả hai thiết bị trong cùng mạng Wi-Fi.</li>
+                <li>iPhone không chia sẻ Bluetooth trực tiếp tới Android/Windows; dùng AirDrop hoặc cáp/đám mây (Google Drive).</li>
               </ol>
             </div>
           </div>
 
           <div className="mt-4">
-            <h3 className="font-semibold">Mẹo xử lý sự cố</h3>
-            <ul className="list-disc pl-5 text-sm mt-2 text-gray-700">
-              <li>Tắt/Bật Bluetooth & khởi động lại thiết bị.</li>
-              <li>Đảm bảo thiết bị ở phạm vi vài mét, không nhiều vật cản.</li>
-              <li>Gỡ ghép (Forget) và pair lại nếu gặp lỗi mã.</li>
-              <li>Kiểm tra driver Bluetooth (Windows) / cập nhật hệ điều hành.</li>
+            <h4 className="font-semibold">Mẹo xử lý</h4>
+            <ul className="list-disc pl-5 text-sm text-gray-700">
+              <li>Tắt / bật Bluetooth; Forget device rồi pair lại.</li>
+              <li>Kiểm tra driver Bluetooth (Windows) hoặc cập nhật OS.</li>
+              <li>Chọn phương án cáp hoặc Wi-Fi transfer nếu Bluetooth quá chậm.</li>
             </ul>
+            <div className="mt-3">
+              <button className="px-3 py-2 btn-primary rounded" onClick={()=>downloadFile('HuongDan_Bluetooth.txt', `HƯỚNG DẪN KẾT NỐI BLUETOOTH — DeviceHub\n\n(1) Windows ... (2) macOS ...` )}>Tải nhanh (TXT)</button>
+            </div>
+          </div>
+        </div>
+      </main>
+    );
+  }
+
+  /* ---------- Resources ---------- */
+  function Resources(){
+    const docs = [
+      {id:'guide-md', title:'Hướng dẫn Bluetooth (Markdown)', filename:'HuongDan_Bluetooth.md', content:'# Hướng dẫn Bluetooth\\n\\nNội dung...'},
+      {id:'cheat', title:'Cheat-sheet: Cổng & Thiết bị (TXT)', filename:'Cheatsheet_ports.txt', content:'USB-C: ...'}
+    ];
+    return (
+      <main className="container mt-6">
+        <div className="card">
+          <h2 className="text-2xl font-bold">Tài liệu</h2>
+          <p className="text-sm text-gray-600 mt-1">Tải tài liệu học tập. Để thêm PDF chất lượng, upload file vào repo (Add file → Upload files).</p>
+          <div className="mt-3 grid gap-3">
+            {docs.map(d=>(
+              <div key={d.id} className="flex items-center justify-between border rounded p-3">
+                <div>
+                  <div className="font-semibold">{d.title}</div>
+                  <div className="text-xs text-gray-500">{d.filename}</div>
+                </div>
+                <div className="flex gap-2">
+                  <button onClick={()=>downloadFile(d.filename, d.content, d.filename.endsWith('.md')?'text/markdown':'text/plain')} className="px-3 py-1 border rounded">Tải</button>
+                  <button onClick={()=>{ navigator.clipboard?.writeText(d.content).then(()=>alert('Đã copy nội dung')); }} className="px-3 py-1 rounded">Copy</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </main>
+    );
+  }
+
+  /* ---------- Gallery w/ lightbox ---------- */
+  function Gallery(){
+    return (
+      <main className="container mt-6">
+        <div className="card">
+          <h2 className="text-2xl font-bold">Gallery</h2>
+          <div className="mt-3 grid sm:grid-cols-2 md:grid-cols-3 gap-3">
+            {GALLERY.map(img=>(
+              <button key={img.id} onClick={()=>openLightbox(img)} className="rounded overflow-hidden shadow" aria-label={`Mở ảnh ${img.alt}`}>
+                <img src={img.src+'&w=800&q=70&auto=format&fit=crop'} alt={img.alt} className="w-full h-44 object-cover" />
+              </button>
+            ))}
+          </div>
+        </div>
+      </main>
+    );
+  }
+
+  /* ---------- Team page ---------- */
+  function Team(){
+    function exportTeam(){ const txt = TEAM.map(t=>`${t.name} — ${t.role} — ${t.bio}`).join('\\n'); downloadFile('team-info.txt', txt, 'text/plain'); }
+    return (
+      <main className="container mt-6">
+        <div className="card">
+          <h2 className="text-2xl font-bold">Đội thực hiện — Nhóm 8</h2>
+          <p className="text-sm text-gray-600 mt-1">Leader: <strong>Tuấn Anh</strong>. Thành viên: Quỳnh Anh, Thùy Trang, Hà An, Thanh Bình, Lê Ánh.</p>
+          <div className="mt-4 grid md:grid-cols-3 gap-3">
+            {TEAM.map((m,idx)=>(
+              <div key={idx} className={"p-3 border rounded "+(m.leader ? 'ring-2 ring-indigo-200' : '')} role="group" aria-label={`Thành viên ${m.name}`}>
+                <div className="flex items-center gap-3">
+                  <div className="w-14 h-14 rounded-full bg-gray-100 flex items-center justify-center text-xl font-bold">{m.name.split(' ')[0].slice(0,1)+m.name.split(' ')[1]?.slice(0,1)||m.name.slice(0,2)}</div>
+                  <div>
+                    <div className="font-semibold">{m.name} {m.leader && <span className="text-sm text-indigo-600">— Leader</span>}</div>
+                    <div className="text-xs text-gray-500">{m.role}</div>
+                  </div>
+                </div>
+                <div className="mt-2 text-sm text-gray-700">{m.bio}</div>
+              </div>
+            ))}
           </div>
 
           <div className="mt-4 flex gap-2">
-            <button className="px-3 py-2 rounded btn-primary" onClick={()=>downloadFile('HuongDan_Bluetooth.md', SAMPLE_DOC_MD, 'text/markdown')}>Tải full guide (MD)</button>
-            <button className="px-3 py-2 rounded border" onClick={()=>alert('Để có PDF chất lượng, bạn có thể dùng công cụ chuyển MD → PDF (online) hoặc Visual Studio Code + ext)'}>Chuyển sang PDF (gợi ý)</button>
+            <button className="px-3 py-2 btn-primary rounded" onClick={()=>{ exportTeam(); Sound.click(); }}>Tải team-info</button>
+            <button className="px-3 py-2 border rounded" onClick={()=>{ downloadFile('team-report.txt', JSON.stringify(TEAM, null, 2), 'application/json'); }}>Export JSON</button>
           </div>
         </div>
-      </div>
+      </main>
     );
   }
 
-  /* ---------- Resources page (download files, add your own) ---------- */
-  function ResourcesPage(){
-    // sample resources list; real site: add files to repo and link here
-    const items = [
-      {id:'guide-md', title:'Hướng dẫn Bluetooth (Markdown)', filename:'HuongDan_Bluetooth.md', content:SAMPLE_DOC_MD},
-      {id:'cheatsheet', title:'Cheat-sheet: Các cổng & thiết bị (TXT)', filename:'Cheatsheet_ports.txt', content:'USB-A: truyền dữ liệu; USB-C: đa năng; HDMI: xuất hình; RJ45: mạng có dây.'}
-    ];
-
-    return (
-      <div className="container">
-        <div className="card">
-          <h2 className="text-2xl font-bold">Tài liệu & Download</h2>
-          <p className="text-sm text-gray-600 mt-1">Tải xuống tài liệu học tập — bạn có thể upload thêm file PDF vào repo và link ở đây.</p>
-
-          <div className="mt-4 grid gap-3">
-            {items.map(it=>(
-              <div key={it.id} className="flex items-center justify-between border rounded p-3">
-                <div>
-                  <div className="font-semibold">{it.title}</div>
-                  <div className="text-xs text-gray-500">File: {it.filename}</div>
-                </div>
-                <div className="flex gap-2">
-                  <button className="px-3 py-1 rounded border" onClick={()=>downloadFile(it.filename, it.content, it.filename.endsWith('.md')? 'text/markdown' : 'text/plain')}>Tải</button>
-                  <button className="px-3 py-1 rounded" onClick={()=>navigator.clipboard && navigator.clipboard.writeText(it.content).then(()=>alert('Đã copy nội dung vào clipboard'))}>Copy nội dung</button>
-                </div>
-              </div>
-            ))}
-          </div>
-
-          <div className="mt-4 text-sm text-gray-500">Muốn upload PDF vào web: thêm file vào repo (Add file → Upload files) rồi link trực tiếp tới file đó.</div>
-        </div>
-      </div>
-    );
-  }
-
-  /* ---------- Gallery page ---------- */
-  function GalleryPage(){
-    return (
-      <div className="container">
-        <div className="card">
-          <h2 className="text-2xl font-bold">Gallery ảnh minh họa</h2>
-          <p className="text-sm text-gray-600 mt-1">Ảnh lấy từ Unsplash (ứng dụng demo), bạn có thể thay bằng ảnh trong repo.</p>
-          <div className="mt-4 grid sm:grid-cols-2 md:grid-cols-3 gap-3">
-            {GALLERY.map(img=>(
-              <div key={img.id} className="rounded overflow-hidden card">
-                <img src={img.src+'&w=800&q=80&auto=format&fit=crop'} alt={img.alt} className="w-full h-44 object-cover"/>
-                <div className="p-3">
-                  <div className="font-semibold text-sm">{img.alt}</div>
-                  <div className="text-xs text-gray-500 mt-1">Ảnh ví dụ</div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  /* ---------- Comments page (localStorage) ---------- */
-  function CommentsPage(){
+  /* ---------- Comments page (local) ---------- */
+  function Comments(){
     const [list, setList] = useState(getComments());
     const [name, setName] = useState('');
     const [text, setText] = useState('');
-    const [page, setPage] = useState(1);
-    const perPage = 6;
-    function refresh(){ const arr=getComments(); setList(arr); }
+    useEffect(()=>{ setList(getComments()); },[]);
     function post(){
-      if(!name.trim()||!text.trim()){ alert('Nhập tên và nội dung'); return; }
-      const c = {id:Date.now(), name: name.trim(), text: text.trim(), ts:Date.now()};
-      const arr = [c, ...getComments()];
-      saveComments(arr); setName(''); setText(''); refresh(); Sound.click();
+      if(!name.trim()||!text.trim()){ alert('Nhập tên & nội dung'); return; }
+      const c = {id:Date.now(), name:name.trim(), text:text.trim(), ts:Date.now()};
+      const arr=[c, ...getComments()]; saveComments(arr); setList(arr); setName(''); setText(''); Sound.click();
     }
-    function remove(id){
-      if(!confirm('Xóa comment này? (chỉ local)')) return;
-      const arr = getComments().filter(x=>x.id!==id); saveComments(arr); refresh();
-    }
-    function exportComments(){
-      const arr = getComments(); downloadFile('comments.json', JSON.stringify(arr, null, 2), 'application/json');
-    }
-    const total = list.length; const pages = Math.max(1, Math.ceil(total / perPage));
-    const visible = list.slice((page-1)*perPage, (page-1)*perPage + perPage);
-
-    useEffect(()=>{ refresh(); },[]);
-
+    function exportJSON(){ downloadFile('comments.json', JSON.stringify(getComments(), null, 2), 'application/json'); }
     return (
-      <div className="container">
+      <main className="container mt-6">
         <div className="card">
           <h2 className="text-2xl font-bold">Bình luận & Góp ý</h2>
-          <p className="text-sm text-gray-600 mt-1">Gửi góp ý cho website — dữ liệu lưu trên trình duyệt (local). Giáo viên có thể export comments (JSON).</p>
+          <p className="text-sm text-gray-600 mt-1">Lưu địa phương (local) — Giáo viên có thể export JSON để thu bài.</p>
 
-          <div className="mt-4 grid gap-3">
+          <div className="mt-3 grid gap-2">
             <div className="grid md:grid-cols-3 gap-2">
               <input className="p-2 border rounded" placeholder="Tên" value={name} onChange={e=>setName(e.target.value)} />
               <input className="p-2 border rounded md:col-span-2" placeholder="Nội dung góp ý" value={text} onChange={e=>setText(e.target.value)} />
             </div>
             <div className="flex gap-2">
-              <button className="px-3 py-2 rounded btn-primary" onClick={()=>post()}>Gửi</button>
-              <button className="px-3 py-2 rounded border" onClick={()=>exportComments()}>Export JSON</button>
-              <button className="px-3 py-2 rounded" onClick={()=>{ saveComments([]); refresh(); }}>Xóa tất cả (local)</button>
+              <button className="px-3 py-2 btn-primary rounded" onClick={post}>Gửi</button>
+              <button className="px-3 py-2 border rounded" onClick={exportJSON}>Export JSON</button>
+              <button className="px-3 py-2 rounded" onClick={()=>{ saveComments([]); setList([]); }}>Xóa tất cả (local)</button>
             </div>
 
-            <div className="mt-2">
-              <div className="text-sm text-gray-500 mb-2">Tổng: {total} bình luận</div>
-              {visible.length===0 && <div className="text-sm text-gray-500">Chưa có bình luận</div>}
-              {visible.map(c=>(
+            <div className="mt-3">
+              {list.length===0 && <div className="text-sm text-gray-500">Chưa có bình luận</div>}
+              {list.map(c=>(
                 <div key={c.id} className="border rounded p-3 mb-2">
                   <div className="flex items-start justify-between">
                     <div>
@@ -503,155 +416,69 @@ DeviceHub — tài liệu tạo tự động.
                       <div className="text-xs text-gray-500">{htime(c.ts)}</div>
                     </div>
                     <div className="text-sm text-gray-500">
-                      <button className="px-2 py-1 rounded" onClick={()=>{ navigator.clipboard && navigator.clipboard.writeText(JSON.stringify(c)); alert('Copied'); }}>Copy</button>
-                      <button className="px-2 py-1 rounded ml-2 text-red-600" onClick={()=>remove(c.id)}>Xóa</button>
+                      <button className="px-2 py-1 rounded" onClick={()=>{ navigator.clipboard?.writeText(JSON.stringify(c)); alert('Copied'); }}>Copy</button>
                     </div>
                   </div>
-                  <div className="mt-2 text-gray-700">{c.text}</div>
+                  <div className="mt-2">{c.text}</div>
                 </div>
               ))}
+            </div>
+          </div>
+        </div>
+      </main>
+    );
+  }
 
-              <div className="mt-3 flex items-center gap-2">
-                <button disabled={page<=1} onClick={()=>setPage(p=>Math.max(1,p-1))} className="px-2 py-1 border rounded">‹</button>
-                <div className="text-sm">Trang {page}/{pages}</div>
-                <button disabled={page>=pages} onClick={()=>setPage(p=>Math.min(p+1,pages))} className="px-2 py-1 border rounded">›</button>
-              </div>
+  /* ---------- Lightbox support ---------- */
+  const lightboxRef = { open: null };
+  function openLightbox(img){ if(lightboxRef.open) lightboxRef.open(img); }
+
+  function Lightbox(){ const [img,setImg]=useState(null); useEffect(()=>{ lightboxRef.open=(i)=>setImg(i); },[]); if(!img) return null; return (
+    <div className="modal-backdrop" role="dialog" aria-modal="true" onClick={()=>setImg(null)}>
+      <div className="max-w-3xl w-full p-4" onClick={e=>e.stopPropagation()}>
+        <div className="bg-white rounded shadow overflow-hidden">
+          <img src={img.src+'&w=1600&q=80&auto=format&fit=crop'} alt={img.alt} className="w-full object-contain max-h-[70vh]" />
+          <div className="p-3 flex items-center justify-between">
+            <div className="text-sm font-semibold">{img.alt}</div>
+            <div>
+              <button onClick={()=>{ downloadFile('image.jpg', img.src); }} className="px-3 py-1 border rounded mr-2">Tải</button>
+              <button onClick={()=>setImg(null)} className="px-3 py-1 rounded btn-primary">Đóng</button>
             </div>
           </div>
         </div>
       </div>
-    );
-  }
+    </div>
+  ); }
 
-  /* ---------- Quiz & Match components (improved small) ---------- */
-
-  const QUIZ = [
-    {q:'Thiết bị nào nhập giọng nói?', choices:['Microphone','Monitor','Router','Printer'], a:0},
-    {q:'Bluetooth là gì?', choices:['Một hãng','Giao thức không dây tầm ngắn','Màn hình','Ổ cứng'], a:1},
-    {q:'USB flash dùng để?', choices:['Lưu trữ','In ấn','Gọi điện','Phát wifi'], a:0},
-    {q:'USB-C có đặc điểm?', choices:['Chỉ sạc','Đa năng (sạc, dữ liệu, xuất hình)','Chỉ in','Không dùng'], a:1},
-  ];
-
-  function QuizEnhanced(){
-    const [i, setI] = useState(0), [score, setScore]=useState(0), [done,setDone]=useState(false);
-    const bestK='dh_quiz_best'; const [best,setBest]=useState(()=>Number(localStorage.getItem(bestK)||0));
-    function choose(idx){
-      const correct = (idx === QUIZ[i].a);
-      if(correct){ setScore(s=>s+1); Sound.correct(); } else { Sound.wrong(); }
-      if(i+1>=QUIZ.length){ const final = score + (correct?1:0); setDone(true); if(final>best){ localStorage.setItem(bestK,String(final)); setBest(final); } setTimeout(()=>fireConfetti(),300); }
-      else setI(i+1);
-    }
-    function reset(){ setI(0); setScore(0); setDone(false); }
-    return (
-      <div>
-        <div className="flex items-center justify-between">
-          <div><strong>Quiz nhanh</strong><div className="text-xs text-gray-500">Ôn tập cơ bản</div></div>
-          <div className="text-xs text-gray-500">Best: <strong>{best}</strong>/{QUIZ.length}</div>
-        </div>
-        <div className="mt-3">
-          {!done ? (
-            <>
-              <div className="text-sm text-gray-600 mb-2">Câu {i+1}/{QUIZ.length}</div>
-              <div className="font-medium">{QUIZ[i].q}</div>
-              <div className="grid gap-2 mt-3">
-                {QUIZ[i].choices.map((c,idx)=>(
-                  <button key={idx} onClick={()=>choose(idx)} className="p-2 rounded border text-left hover:shadow-sm bg-white">{c}</button>
-                ))}
-              </div>
-            </>
-          ) : (
-            <div className="text-center">
-              <div className="text-lg font-bold">Đã xong 🎉</div>
-              <div className="mt-2">Điểm: <strong>{score}</strong> / {QUIZ.length}</div>
-              <div className="mt-3"><button className="px-3 py-1 rounded border" onClick={reset}>Làm lại</button></div>
-            </div>
-          )}
-        </div>
-      </div>
-    );
-  }
-
-  function MatchEnhanced(){
-    const items = MATCH_ITEMS;
-    const [left,setLeft]=useState(()=>shuffle(items));
-    const [right,setRight]=useState(()=>shuffle(items.map(i=>({...i,face:i.hint}))));
-    const [sel,setSel]=useState(null); const [matches,setMatches]=useState([]); const [moves,setMoves]=useState(0);
-    const bestK='dh_match_best'; const [best,setBest]=useState(()=>Number(localStorage.getItem(bestK)||0));
-    function pickLeft(it){ setSel({side:'L',it}); }
-    function pickRight(it){
-      if(!sel){ setSel({side:'R',it}); return; }
-      let a,b; if(sel.side==='L'){ a=sel.it; b=it; } else { a=it; b=sel.it; }
-      setMoves(m=>m+1);
-      if(a.id===b.id){
-        setMatches(m=>{ const next=[...m,a.id]; if(next.length===items.length){ const final = moves+1; if(best===0 || final < best){ localStorage.setItem(bestK,String(final)); setBest(final); } setTimeout(()=>fireConfetti(),200); } return next; });
-        Sound.correct();
-      } else { Sound.wrong(); }
-      setSel(null);
-    }
-    function reset(){ setLeft(shuffle(items)); setRight(shuffle(items.map(i=>({...i,face:i.hint})))); setMatches([]); setMoves(0); setSel(null); }
-    return (
-      <div>
-        <div className="flex items-center justify-between">
-          <div><strong>Ghép đôi</strong><div className="text-xs text-gray-500">Tên ↔ Chức năng</div></div>
-          <div className="text-xs text-gray-500">Moves: <strong>{moves}</strong> | Best: <strong>{best||'-'}</strong></div>
-        </div>
-        <div className="mt-3 grid grid-cols-2 gap-3">
-          <div>
-            <div className="text-xs text-gray-400 mb-2">Tên</div>
-            <div className="grid gap-2">
-              {left.map(it=>(
-                <button key={it.id} disabled={matches.includes(it.id)} onClick={()=>pickLeft(it)} className={`p-2 text-left border rounded ${sel?.it?.id===it.id && sel.side==='L' ? 'ring-2 ring-indigo-300' : ''} ${matches.includes(it.id)? 'opacity-40 line-through' : ''}`}>{it.name}</button>
-              ))}
-            </div>
-          </div>
-          <div>
-            <div className="text-xs text-gray-400 mb-2">Chức năng</div>
-            <div className="grid gap-2">
-              {right.map(it=>(
-                <button key={it.id} disabled={matches.includes(it.id)} onClick={()=>pickRight(it)} className={`p-2 text-left border rounded ${sel?.it?.id===it.id && sel.side==='R' ? 'ring-2 ring-indigo-300' : ''} ${matches.includes(it.id)? 'opacity-40 line-through' : ''}`}>{it.face}</button>
-              ))}
-            </div>
-          </div>
-        </div>
-        <div className="mt-3 flex items-center justify-between">
-          <div className="text-sm">{matches.length}/{items.length} đã ghép</div>
-          <div><button className="px-3 py-1 border rounded" onClick={reset}>Làm lại</button></div>
-        </div>
-        {matches.length===items.length && <div className="mt-3 p-3 bg-green-50 rounded">Chúc mừng! Bạn hoàn thành trong {moves} lượt 🎉</div>}
-      </div>
-    );
-  }
-
-  /* ---------- Router + App ---------- */
+  /* ---------- Router & App ---------- */
   function App(){
     const [route, nav] = useHashRoute();
-    useEffect(()=>{ if(!window.location.hash) window.location.hash='/'; },[]);
-    function renderRoute(){
-      if(route === '/' ) return <Home />;
-      if(route === '/games') return <GamesPage />;
-      if(route === '/guides') return <GuidesPage />;
-      if(route === '/resources') return <ResourcesPage />;
-      if(route === '/gallery') return <GalleryPage />;
-      if(route === '/comments') return <CommentsPage />;
-      // fallback
-      return <Home />;
-    }
+    useEffect(()=>{ if(!window.location.hash) window.location.hash='/'; const onScroll=()=>{ const btn=document.getElementById('backTop'); if(window.scrollY>200) btn.style.display='block'; else btn.style.display='none'; }; window.addEventListener('scroll', onScroll); return ()=>window.removeEventListener('scroll', onScroll); },[]);
+    useEffect(()=>{ // keyboard shortcuts: G=games, H=home, T=team, C=comments
+      const h=(e)=>{ if(document.activeElement.tagName==='INPUT'||document.activeElement.tagName==='TEXTAREA') return; if(e.key.toLowerCase()==='g'){ window.location.hash='/games'; } if(e.key.toLowerCase()==='h'){ window.location.hash='/'; } if(e.key.toLowerCase()==='t'){ window.location.hash='/team'; } if(e.key.toLowerCase()==='c'){ window.location.hash='/comments'; } };
+      window.addEventListener('keydown', h); return ()=>window.removeEventListener('keydown', h);
+    },[]);
+    function render(){ if(route==='/' ) return <Home />; if(route==='/games') return <Games />; if(route==='/guides') return <Guides />; if(route==='/resources') return <Resources />; if(route==='/gallery') return <Gallery />; if(route==='/team') return <Team />; if(route==='/comments') return <Comments />; return <Home />; }
     return (
       <div>
         <TopNav route={route} nav={nav} />
         <Breadcrumb route={route} />
-        <main className="pb-20">{ renderRoute() }</main>
-        <div className="container">
-          <div className="flex items-center justify-between mt-6">
-            <div className="footer">© {new Date().getFullYear()} DeviceHub — Học qua trò chơi. Được tạo để trình diễn.</div>
-            <div className="text-sm text-gray-500">Deploy: GitHub Pages / Netlify / Vercel</div>
-          </div>
-        </div>
+        {render()}
+        <Lightbox />
+        <footer className="container mt-8 mb-8 text-sm text-gray-600">© {new Date().getFullYear()} — Nhóm 8 — DeviceHub. Leader: Tuấn Anh. Mọi nội dung học tập — dùng cho mục đích giáo dục.</footer>
+
+        <button id="backTop" aria-label="Lên đầu trang" onClick={()=>window.scrollTo({top:0,behavior:'smooth'})}>↑</button>
       </div>
     );
   }
 
-  // render
+  /* ---------- helpers exposed to UI ---------- */
+  function downloadTeamInfo(){
+    const txt = TEAM.map(t=>`${t.name} — ${t.role} — ${t.bio}`).join('\\n');
+    downloadFile('team-info.txt', txt, 'text/plain');
+  }
+
+  // render app
   const root = ReactDOM.createRoot(document.getElementById('root'));
   root.render(<App />);
 
